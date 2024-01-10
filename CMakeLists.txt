@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 project(ishmem_experiments)
 
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
@@ -44,10 +44,7 @@ ExternalProject_Add(
   GIT_REPOSITORY https://github.com/oneapi-src/level-zero.git
   GIT_TAG v1.14.0
   INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}
-  CMAKE_CACHE_ARGS "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}"
-)
-
-set(SOS_L0_PARAM )
+  CMAKE_CACHE_ARGS "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}")
 
 ExternalProject_Add(
   ofi
@@ -58,11 +55,12 @@ ExternalProject_Add(
   CONFIGURE_COMMAND
     cd ${CMAKE_CURRENT_BINARY_DIR}/ofisrc && ./autogen.sh && ./configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM} --enable-only
-    --enable-${OFI_PROVIDER}=yes --with-dlopen=no
+    --enable-${OFI_PROVIDER}=dl --with-dlopen=yes
   BUILD_IN_SOURCE ON
   BUILD_COMMAND make
   INSTALL_COMMAND make install)
 
+# --enable-hard-polling is special to verbs/psm3
 ExternalProject_Add(
   sos
   GIT_REPOSITORY git@github.com:Sandia-OpenSHMEM/SOS.git
@@ -74,8 +72,7 @@ ExternalProject_Add(
     --prefix=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM}
     --enable-pmi-simple --with-ofi=${CMAKE_CURRENT_BINARY_DIR} --disable-fortran
     --enable-ofi-mr=basic --disable-ofi-inject --enable-ofi-hmem
-    --disable-bounce-buffers
-    --enable-hard-polling  # special for verbs
+    --disable-bounce-buffers --enable-hard-polling
   BUILD_IN_SOURCE ON
   BUILD_COMMAND make
   INSTALL_COMMAND make install)
@@ -109,21 +106,29 @@ function(add_ctest name binname nproc)
   cmake_parse_arguments(ISHMEXP "${options}" "" "" ${ARGN})
 
   if(ISHMEXP_OFFLOAD)
-    set(extra_mpiflags "-genv;I_MPI_OFFLOAD;1;-genv;I_MPI_OFFLOAD_LEVEL_ZERO_LIBRARY;${CMAKE_BINARY_DIR}/lib64/libze_loader.so")
+    set(extra_mpiflags
+        "-genv;I_MPI_OFFLOAD;1;-genv;I_MPI_OFFLOAD_LEVEL_ZERO_LIBRARY;${CMAKE_BINARY_DIR}/lib64/libze_loader.so"
+    )
   endif()
 
   if(ISHMEXP_GDB)
-    set(wrapper_script gdb-oneapi -return-child-result --ex r -ex bt --ex q --batch --args)
+    set(wrapper_script
+        "gdb-oneapi;-return-child-result;--ex;b abort;--ex;r;-ex;bt;--ex;q;--batch;--args")
     set(extra_mpiflags "${extra_mpiflags};-genv;ZET_ENABLE_PROGRAM_DEBUGGING;1")
   endif()
 
+  # override system set FI_PROVIDER_PATH
+  set(extra_mpiflags
+      "${extra_mpiflags};-genv;FI_PROVIDER_PATH;${CMAKE_BINARY_DIR}/lib/libfabric;-genv;I_MPI_OFI_LIBRARY;${CMAKE_BINARY_DIR}/lib/libfabric.so;-genv;I_MPI_OFI_PROVIDER;${OFI_PROVIDER};-genv;FI_LOG_LEVEL;Debug;-genv;FI_LOG_SUBSYS;core,fabric,domain,ep_ctrl,ep_data,av,cq,eq,mr;-genv;I_MPI_DEBUG;1000;-genv;SHMEM_DEBUG;1;-genv;FI_PROVIDER;${OFI_PROVIDER}"
+  )
+
   add_test(
-          NAME ${name}
-          COMMAND
-          ${MPIEXEC_EXECUTABLE} -n ${nproc} -outfile-pattern "${name}.%r.out.log"
-          -errfile-pattern "${name}.%r.err.log"
-          ${extra_mpiflags} ${CMAKE_BINARY_DIR}/bin/ishmrun ${wrapper_script} ./${binname}
-          COMMAND_EXPAND_LISTS)
+    NAME ${name}
+    COMMAND
+      ${MPIEXEC_EXECUTABLE} -n ${nproc} -outfile-pattern "${name}.%r.out.log"
+      -errfile-pattern "${name}.%r.err.log" ${extra_mpiflags}
+      ${CMAKE_BINARY_DIR}/bin/ishmrun ${wrapper_script} ./${binname}
+      COMMAND_EXPAND_LISTS)
 endfunction()
 
 add_executable(ishmexp main.cpp)
@@ -131,5 +136,7 @@ add_executable(ishmexp main.cpp)
 target_link_libraries(ishmexp MPI::MPI_CXX)
 target_link_ishmem(ishmexp)
 
-add_ctest(ishmexp itest 2)
-add_ctest(ishmexp-offload itest 2 OFFLOAD)
+add_ctest(itest ishmexp 1)
+add_ctest(gtest ishmexp 1 GDB)
+add_ctest(otest ishmexp 1 OFFLOAD)
+# add_ctest(itest-offload ishmexp 1 OFFLOAD)
