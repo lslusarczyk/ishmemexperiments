@@ -29,9 +29,9 @@ link_directories(${CMAKE_CURRENT_BINARY_DIR}/lib)
 find_package(MPI REQUIRED)
 message("MPI exec set to ${MPIEXEC_EXECUTABLE}")
 
-if(NOT OFI_PROVIDER STREQUAL "verbs" AND NOT OFI_PROVIDER STREQUAL "psm3")
-  message(FATAL_ERROR "not set or not supported OFI_PROVIDER:${OFI_PROVIDER}")
-endif()
+#if(NOT OFI_PROVIDER STREQUAL "verbs" AND NOT OFI_PROVIDER STREQUAL "psm3")
+#  message(FATAL_ERROR "not set or not supported OFI_PROVIDER:${OFI_PROVIDER}")
+#endif()
 
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set(ENABLE_DEBUG_PARAM "--enable-debug")
@@ -42,9 +42,12 @@ endif()
 ExternalProject_Add(
   level-zero
   GIT_REPOSITORY https://github.com/oneapi-src/level-zero.git
-  GIT_TAG v1.14.0
+  GIT_TAG v1.15.1
   INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}
   CMAKE_CACHE_ARGS "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}")
+
+# --with-dlopen=no
+# --enable-${OFI_PROVIDER}=dl
 
 ExternalProject_Add(
   ofi
@@ -54,8 +57,8 @@ ExternalProject_Add(
   DEPENDS level-zero
   CONFIGURE_COMMAND
     cd ${CMAKE_CURRENT_BINARY_DIR}/ofisrc && ./autogen.sh && ./configure
-    --prefix=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM} --enable-only
-    --enable-${OFI_PROVIDER}=dl --with-dlopen=yes
+    --prefix=${CMAKE_CURRENT_BINARY_DIR} --with-ze=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM}
+         --with-dlopen=no
   BUILD_IN_SOURCE ON
   BUILD_COMMAND make
   INSTALL_COMMAND make install)
@@ -105,9 +108,10 @@ function(add_ctest name binname nproc)
   set(options OFFLOAD GDB)
   cmake_parse_arguments(ISHMEXP "${options}" "" "" ${ARGN})
 
+  # -genv;I_MPI_OFFLOAD_LEVEL_ZERO_LIBRARY;${CMAKE_BINARY_DIR}/lib64/libze_loader.so
   if(ISHMEXP_OFFLOAD)
     set(extra_mpiflags
-        "-genv;I_MPI_OFFLOAD;1;-genv;I_MPI_OFFLOAD_LEVEL_ZERO_LIBRARY;${CMAKE_BINARY_DIR}/lib64/libze_loader.so"
+        "-genv;I_MPI_OFFLOAD;1"
     )
   endif()
 
@@ -117,9 +121,17 @@ function(add_ctest name binname nproc)
     set(extra_mpiflags "${extra_mpiflags};-genv;ZET_ENABLE_PROGRAM_DEBUGGING;1")
   endif()
 
-  # override system set FI_PROVIDER_PATH
+  # flags which make failures if enabled:
+  # -genv;FI_PROVIDER_PATH;${CMAKE_BINARY_DIR}/lib/libfabric
+  # -genv;FI_PROVIDER;${OFI_PROVIDER} in case of psm3, because ony verbs has FI_HMEM on jf-pvc cluster
+
+  # flags which have no effect, pass with and without them:
+  # -genv;I_MPI_OFI_LIBRARY;${CMAKE_BINARY_DIR}/lib/libfabric.so
+  # -genv;I_MPI_OFI_PROVIDER;${OFI_PROVIDER}
+
+  # add as many logs as possible
   set(extra_mpiflags
-      "${extra_mpiflags};-genv;FI_PROVIDER_PATH;${CMAKE_BINARY_DIR}/lib/libfabric;-genv;I_MPI_OFI_LIBRARY;${CMAKE_BINARY_DIR}/lib/libfabric.so;-genv;I_MPI_OFI_PROVIDER;${OFI_PROVIDER};-genv;FI_LOG_LEVEL;Debug;-genv;FI_LOG_SUBSYS;core,fabric,domain,ep_ctrl,ep_data,av,cq,eq,mr;-genv;I_MPI_DEBUG;1000;-genv;SHMEM_DEBUG;1;-genv;FI_PROVIDER;${OFI_PROVIDER}"
+      "${extra_mpiflags};-genv;FI_LOG_LEVEL;Debug;-genv;FI_LOG_SUBSYS;core,fabric,domain,ep_ctrl,ep_data,av,cq,eq,mr;-genv;I_MPI_DEBUG;1000;-genv;SHMEM_DEBUG;1"
   )
 
   add_test(
@@ -131,12 +143,14 @@ function(add_ctest name binname nproc)
       COMMAND_EXPAND_LISTS)
 endfunction()
 
-add_executable(ishmexp main.cpp)
-# target_compile_definitions(ishmexp PRIVATE USE_MPI)
-target_link_libraries(ishmexp MPI::MPI_CXX)
-target_link_ishmem(ishmexp)
+foreach(variant IN ITEMS only-mpi only-ishmem both)
+  add_executable(${variant} main.cpp)
+  target_link_libraries(${variant} MPI::MPI_CXX)
+  target_link_ishmem(${variant})
+  add_ctest(non-offloaded-${variant} ${variant} 1)
+  add_ctest(offloaded-${variant} ${variant} 1 OFFLOAD)
+endforeach ()
 
-add_ctest(itest ishmexp 1)
-add_ctest(gtest ishmexp 1 GDB)
-add_ctest(otest ishmexp 1 OFFLOAD)
-# add_ctest(itest-offload ishmexp 1 OFFLOAD)
+target_compile_definitions(only-mpi PRIVATE USE_MPI)
+target_compile_definitions(only-ishmem PRIVATE USE_ISHMEM)
+target_compile_definitions(both PRIVATE USE_MPI US_ISHMEM)
