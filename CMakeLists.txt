@@ -45,7 +45,6 @@ ExternalProject_Add(
   GIT_REPOSITORY git@github.com:Sandia-OpenSHMEM/SOS.git
   GIT_TAG main
   SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/sossrc
-  DEPENDS level-zero ofi
   CONFIGURE_COMMAND
     cd ${CMAKE_CURRENT_BINARY_DIR}/sossrc && ./autogen.sh && ./configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM}
@@ -66,8 +65,7 @@ ExternalProject_Add(
   CMAKE_ARGS -DCMAKE_BUILD_TYPE=STRING:${CMAKE_BUILD_TYPE}
   CMAKE_CACHE_ARGS
     "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}"
-    "-DSHMEM_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}"
-    "-DL0_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}")
+    "-DSHMEM_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}")
 
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall>)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Werror>)
@@ -87,7 +85,7 @@ function(add_ctest name binname nproc)
   # -genv;I_MPI_OFFLOAD_LEVEL_ZERO_LIBRARY;${CMAKE_BINARY_DIR}/lib64/libze_loader.so
   if(ISHMEXP_OFFLOAD)
     set(extra_mpiflags
-        "-genv;I_MPI_OFFLOAD;1"
+        "-genv;I_MPI_OFFLOAD;1;-genv;I_MPI_OFFLOAD_CELL_LIST;0-0-genv;I_MPI_OFI_LIBRARY;/opt/cray/libfabric/1.15.2.0/lib64/libfabric.so.1;-genv;FI_PROVIDER_PATH;/opt/cray/libfabric/1.15.2.0/lib64;-genv;FI_PROVIDER;cxi"
     )
   endif()
 
@@ -129,4 +127,5 @@ endforeach ()
 
 target_compile_definitions(only-mpi PRIVATE USE_MPI)
 target_compile_definitions(only-ishmem PRIVATE USE_ISHMEM)
-target_compile_definitions(both PRIVATE USE_MPI US_ISHMEM)
+target_compile_definitions(both PRIVATE USE_MPI USE_ISHMEM)
+add_custom_target(alltests DEPENDS only-mpi only-ishmem both)
