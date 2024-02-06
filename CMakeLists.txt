@@ -39,31 +39,7 @@ else()
   set(ENABLE_DEBUG_PARAM "")
 endif()
 
-ExternalProject_Add(
-  level-zero
-  GIT_REPOSITORY https://github.com/oneapi-src/level-zero.git
-  GIT_TAG v1.15.1
-  INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}
-  CMAKE_CACHE_ARGS "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}")
-
-# --with-dlopen=no
-# --enable-${OFI_PROVIDER}=dl
-
-ExternalProject_Add(
-  ofi
-  GIT_REPOSITORY git@github.com:ofiwg/libfabric.git
-  GIT_TAG v1.18.0
-  SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/ofisrc
-  DEPENDS level-zero
-  CONFIGURE_COMMAND
-    cd ${CMAKE_CURRENT_BINARY_DIR}/ofisrc && ./autogen.sh && ./configure
-    --prefix=${CMAKE_CURRENT_BINARY_DIR} --with-ze=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM}
-         --with-dlopen=no
-  BUILD_IN_SOURCE ON
-  BUILD_COMMAND make
-  INSTALL_COMMAND make install)
-
-# --enable-hard-polling is special to verbs/psm3
+# --enable-ofi-manual-progress --enable-mr-endpoint is special to cxi
 ExternalProject_Add(
   sos
   GIT_REPOSITORY git@github.com:Sandia-OpenSHMEM/SOS.git
@@ -73,9 +49,9 @@ ExternalProject_Add(
   CONFIGURE_COMMAND
     cd ${CMAKE_CURRENT_BINARY_DIR}/sossrc && ./autogen.sh && ./configure
     --prefix=${CMAKE_CURRENT_BINARY_DIR} ${ENABLE_DEBUG_PARAM}
-    --enable-pmi-simple --with-ofi=${CMAKE_CURRENT_BINARY_DIR} --disable-fortran
+    --enable-pmi-simple --with-ofi=/opt/cray/libfabric/1.15.2.0 --disable-fortran
     --enable-ofi-mr=basic --disable-ofi-inject --enable-ofi-hmem
-    --disable-bounce-buffers --enable-hard-polling
+    --disable-bounce-buffers --enable-ofi-manual-progress --enable-mr-endpoint
   BUILD_IN_SOURCE ON
   BUILD_COMMAND make
   INSTALL_COMMAND make install)
