@@ -14,3 +14,5 @@ export SHMEM_DEBUG=1
 export I_MPI_OFFLOAD=1
 export I_MPI_OFI_LIBRARY=/opt/cray/libfabric/1.15.2.0/lib64/libfabric.so.1
 export FI_PROVIDER_PATH=/opt/cray/libfabric/1.15.2.0/lib64
+
+export EnableImplicitScaling=0
