@@ -1,9 +1,17 @@
-## running on borealis
+## ISHMEM does not pass simplest unitest on Borealis, Minimal-Reproducible-Example
 
-```
-BQ_TAIL_INTERVAL=1 ../ci/scripts/borealis_qsub.sh 1 logs /mnt/scratch/lslusarc/venv/dds /bin/bash -c "module purge; module use -a /home/ftartagl/modulefiles; module load oneapi-testing/2024.0.0.49564.PUBLIC; module load libfabric/1.15.2.0; export I_MPI_ROOT=$ONEAPI_ROOT/mpi/latest; export export FI_CXI_OPTIMIZED_MRS=0; FI_LOG_LEVEL=Debug FI_LOG_SUBSYS=core,fabric,domain,ep_ctrl,ep_data,av,cq,eq,mr I_MPI_DEBUG=1000 SHMEM_DEBUG=1 ONEAPI_DEVICE_SELECTOR='level_zero:gpu;ext_oneapi_cuda:gpu' I_MPI_OFFLOAD=1 I_MPI_OFFLOAD_CELL_LIST=0-0 I_MPI_OFI_LIBRARY=/opt/cray/libfabric/1.15.2.0/lib64/libfabric.so.1 FI_PROVIDER_PATH=/opt/cray/libfabric/1.15.2.0/lib64 FI_PROVIDER=cxi mpirun -n 1 build/bin/ishmrun build/both"
-```
+### checkout 
 
+Log into Borealis access node
+
+```shell
+git clone -b mpi_with_ishm_on_borealis git@github.com:lslusarczyk/ishmemexperiments.git ishmemexperiments
+cd ishmemexperiments
+```
+Configure environment (newest IMPI, required exports, extra verbose logs, see oneapi.sh script for details)
+```shell
+source oneapi.sh
+```
 informs that:
 ```
 [0000] DEBUG: transport_ofi.c:1492: query_for_fabric
