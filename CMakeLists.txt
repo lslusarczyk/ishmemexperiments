@@ -153,4 +153,5 @@ endforeach ()
 
 target_compile_definitions(only-mpi PRIVATE USE_MPI)
 target_compile_definitions(only-ishmem PRIVATE USE_ISHMEM)
-target_compile_definitions(both PRIVATE USE_MPI US_ISHMEM)
+target_compile_definitions(both PRIVATE USE_MPI USE_ISHMEM)
+add_custom_target(alltests DEPENDS only-mpi only-ishmem both)
